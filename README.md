@@ -66,3 +66,5 @@ curl -s "http://localhost:8081/fhir/MedicationOrder?_count=1"     # DSTU2
 ```
 
 both should give the same result
+
+## Adding MCP to Claude and Gemini
