@@ -85,19 +85,26 @@ def get_recent_labs(patient_id: str):
             return {"error": f"Patient {patient_id} not found in lab system (server may be down)"}
         resp = httpx.get(
             f"{FHIR_LAB}/Observation",
-            params={"patient": local_id, "category": "laboratory", "_format": "json", "_count": 20},
+            params={"patient": local_id, "category": "laboratory", "_format": "json", "_count": 50, "_sort": "-date"},
             timeout=10,
         )
         entries = resp.json().get("entry", [])
-        return [
-            {
-                "test": e["resource"].get("code", {}).get("text"),
-                "value": e["resource"].get("valueQuantity", {}).get("value"),
-                "unit": e["resource"].get("valueQuantity", {}).get("unit"),
-                "date": e["resource"].get("effectiveDateTime"),
-            }
-            for e in entries
-        ]
+
+        # Group labs by date, then return only the most recent date's results
+        by_date = {}
+        for e in entries:
+            r = e["resource"]
+            date = r.get("effectiveDateTime", "")[:10]
+            by_date.setdefault(date, []).append({
+                "test": r.get("code", {}).get("text"),
+                "value": r.get("valueQuantity", {}).get("value"),
+                "unit": r.get("valueQuantity", {}).get("unit"),
+            })
+
+        if not by_date:
+            return []
+        latest_date = max(by_date.keys())
+        return {"date": latest_date, "results": by_date[latest_date]}
     except httpx.ConnectError:
         return {"error": "Lab system (server 2) is unreachable"}
     except httpx.TimeoutException:
