@@ -23,6 +23,43 @@ def resolve_patient_id(server_url: str, synthea_id: str) -> str | None:
 
 
 @mcp.tool()
+def search_patient(family: str, given: str, birthdate: str):
+    """Search for a patient by last name, first name, and date of birth (YYYY-MM-DD).
+    Returns the Synthea UUID needed to call other tools.
+    """
+    try:
+        resp = httpx.get(
+            f"{FHIR_EHR}/Patient",
+            params={
+                "family": family,
+                "given": given,
+                "birthdate": birthdate,
+                "_format": "json",
+            },
+            timeout=10,
+        )
+        entries = resp.json().get("entry", [])
+        if not entries:
+            return {"error": f"No patient found for {given} {family} born {birthdate}"}
+
+        resource = entries[0]["resource"]
+        synthea_id = next(
+            (i["value"] for i in resource.get("identifier", []) if "synthea" in i.get("system", "")),
+            None,
+        )
+        name = resource.get("name", [{}])[0]
+        return {
+            "patient_id": synthea_id,
+            "name": f"{' '.join(name.get('given', []))} {name.get('family', '')}",
+            "birthdate": resource.get("birthDate"),
+        }
+    except httpx.ConnectError:
+        return {"error": "EHR system (server 1) is unreachable"}
+    except httpx.TimeoutException:
+        return {"error": "EHR system (server 1) timed out"}
+
+
+@mcp.tool()
 def get_medications(patient_id: str):
     """Get active medications for a patient from the EHR system (server 1)."""
     try:
